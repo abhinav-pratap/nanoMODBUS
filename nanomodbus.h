@@ -177,61 +177,6 @@ typedef struct nmbs_platform_conf {
  * `unit_id` is the RTU unit ID of the request sender. It is always 0 on TCP.
  */
 typedef struct nmbs_callbacks {
-#ifndef NMBS_SERVER_DISABLED
-#ifndef NMBS_SERVER_READ_COILS_DISABLED
-    nmbs_error (*read_coils)(uint16_t address, uint16_t quantity, nmbs_bitfield coils_out, uint8_t unit_id, void* arg);
-#endif
-
-#ifndef NMBS_SERVER_READ_DISCRETE_INPUTS_DISABLED
-    nmbs_error (*read_discrete_inputs)(uint16_t address, uint16_t quantity, nmbs_bitfield inputs_out, uint8_t unit_id,
-                                       void* arg);
-#endif
-
-#if !defined(NMBS_SERVER_READ_HOLDING_REGISTERS_DISABLED) || !defined(NMBS_SERVER_READ_WRITE_REGISTERS_DISABLED)
-    nmbs_error (*read_holding_registers)(uint16_t address, uint16_t quantity, uint16_t* registers_out, uint8_t unit_id,
-                                         void* arg);
-#endif
-
-#ifndef NMBS_SERVER_READ_INPUT_REGISTERS_DISABLED
-    nmbs_error (*read_input_registers)(uint16_t address, uint16_t quantity, uint16_t* registers_out, uint8_t unit_id,
-                                       void* arg);
-#endif
-
-#ifndef NMBS_SERVER_WRITE_SINGLE_COIL_DISABLED
-    nmbs_error (*write_single_coil)(uint16_t address, bool value, uint8_t unit_id, void* arg);
-#endif
-
-#ifndef NMBS_SERVER_WRITE_SINGLE_REGISTER_DISABLED
-    nmbs_error (*write_single_register)(uint16_t address, uint16_t value, uint8_t unit_id, void* arg);
-#endif
-
-#ifndef NMBS_SERVER_WRITE_MULTIPLE_COILS_DISABLED
-    nmbs_error (*write_multiple_coils)(uint16_t address, uint16_t quantity, const nmbs_bitfield coils, uint8_t unit_id,
-                                       void* arg);
-#endif
-
-#if !defined(NMBS_SERVER_WRITE_MULTIPLE_REGISTERS_DISABLED) || !defined(NMBS_SERVER_READ_WRITE_REGISTERS_DISABLED)
-    nmbs_error (*write_multiple_registers)(uint16_t address, uint16_t quantity, const uint16_t* registers,
-                                           uint8_t unit_id, void* arg);
-#endif
-
-#ifndef NMBS_SERVER_READ_FILE_RECORD_DISABLED
-    nmbs_error (*read_file_record)(uint16_t file_number, uint16_t record_number, uint16_t* registers, uint16_t count,
-                                   uint8_t unit_id, void* arg);
-#endif
-
-#ifndef NMBS_SERVER_WRITE_FILE_RECORD_DISABLED
-    nmbs_error (*write_file_record)(uint16_t file_number, uint16_t record_number, const uint16_t* registers,
-                                    uint16_t count, uint8_t unit_id, void* arg);
-#endif
-
-#ifndef NMBS_SERVER_READ_DEVICE_IDENTIFICATION_DISABLED
-#define NMBS_DEVICE_IDENTIFICATION_STRING_LENGTH 128
-    nmbs_error (*read_device_identification)(uint8_t object_id, char buffer[NMBS_DEVICE_IDENTIFICATION_STRING_LENGTH]);
-    nmbs_error (*read_device_identification_map)(nmbs_bitfield_256 map);
-#endif
-#endif
-
     void* arg;               // User data, will be passed to functions above
     uint32_t initialized;    // Reserved, workaround for older user code not calling nmbs_callbacks_create()
 } nmbs_callbacks;
@@ -297,40 +242,6 @@ void nmbs_platform_conf_create(nmbs_platform_conf* platform_conf);
  */
 void nmbs_set_platform_arg(nmbs_t* nmbs, void* arg);
 
-#ifndef NMBS_SERVER_DISABLED
-/** Create a new nmbs_callbacks struct.
- * @param callbacks pointer to the nmbs_callbacks instance
- */
-void nmbs_callbacks_create(nmbs_callbacks* callbacks);
-
-/** Create a new Modbus server.
- * @param nmbs pointer to the nmbs_t instance where the client will be created.
- * @param address_rtu RTU address of this server. Can be 0 if transport is not RTU.
- * @param platform_conf nmbs_platform_conf struct with platform configuration. It may be discarded after calling this method.
- * @param callbacks nmbs_callbacks struct with server request callbacks. It may be discarded after calling this method.
- *
- * @return NMBS_ERROR_NONE if successful, NMBS_ERROR_INVALID_ARGUMENT otherwise.
- */
-nmbs_error nmbs_server_create(nmbs_t* nmbs, uint8_t address_rtu, const nmbs_platform_conf* platform_conf,
-                              const nmbs_callbacks* callbacks);
-
-/** Handle incoming requests to the server.
- * This function should be called in a loop in order to serve any incoming request. Its maximum duration, in case of no
- * received request, is the value set with nmbs_set_read_timeout() (unless set to < 0).
- * @param nmbs pointer to the nmbs_t instance
- *
- * @return NMBS_ERROR_NONE if successful, other errors otherwise.
- */
-nmbs_error nmbs_server_poll(nmbs_t* nmbs);
-
-/** Set the pointer to user data argument passed to server request callbacks.
- * @param nmbs pointer to the nmbs_t instance
- * @param arg user data argument
- */
-void nmbs_set_callbacks_arg(nmbs_t* nmbs, void* arg);
-#endif
-
-#ifndef NMBS_CLIENT_DISABLED
 /** Create a new Modbus client.
  * @param nmbs pointer to the nmbs_t instance where the client will be created.
  * @param platform_conf nmbs_platform_conf struct with platform configuration. It may be discarded after calling this method.
@@ -532,7 +443,6 @@ nmbs_error nmbs_send_raw_pdu(nmbs_t* nmbs, uint8_t fc, const uint8_t* data, uint
  * @return NMBS_ERROR_NONE if successful, other errors otherwise.
  */
 nmbs_error nmbs_receive_raw_pdu_response(nmbs_t* nmbs, uint8_t* data_out, uint8_t data_out_len);
-#endif
 
 /** Calculate the Modbus CRC of some data.
  * @param data Data
