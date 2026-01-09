@@ -6,18 +6,16 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -pedantic -Wswitch-enum -Wcast
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -g0")
 
-include_directories(tests examples/linux .)
+include_directories(tests examples/linux-serial .)
 
 # Define BUILD_SHARED_LIBS=ON to build a dynamic library instead
 add_library(nanomodbus nanomodbus.c)
 target_include_directories(nanomodbus PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-if (BUILD_EXAMPLES)
-    add_executable(client-tcp examples/linux/client-tcp.c)
-    target_link_libraries(client-tcp nanomodbus)
-    add_executable(server-tcp examples/linux/server-tcp.c)
-    target_link_libraries(server-tcp nanomodbus)
-endif ()
+# if (BUILD_EXAMPLES)
+    add_executable(client examples/linux-serial/client.c)
+    target_link_libraries(client nanomodbus gpiod)
+# endif ()
 
 if (BUILD_TESTS)
     add_executable(nanomodbus_tests nanomodbus.c tests/nanomodbus_tests.c)
