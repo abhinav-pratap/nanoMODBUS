@@ -75,8 +75,8 @@ int open_serial_conn(const char* portname, int baudrate, serial_conn_t* out_conn
 
     const char* chipname = "gpiochip0";
     unsigned int line_offset = 31;    // Pin 31
-    struct gpiod_chip* chip = out_conn->chip;
-    struct gpiod_line* line = out_conn->line;
+    struct gpiod_chip* chip;
+    struct gpiod_line* line;
     int ret;
 
     // 1. Open the GPIO chip
@@ -102,6 +102,9 @@ int open_serial_conn(const char* portname, int baudrate, serial_conn_t* out_conn
         gpiod_chip_close(chip);
         return 1;
     }
+
+    out_conn->chip = chip;
+    out_conn->line = line;
 
     return 0;
 }
@@ -194,8 +197,10 @@ int32_t write_serial(const uint8_t* buf, uint16_t count, int32_t byte_timeout_ms
         return -1;
     }
     int32_t num_written = write(conn->fd, buf, count);
+
     if (set_rts_receive(arg) < 0) {
         return -1;
     }
+    fprintf(stderr, "Wrote %d bytes\n", num_written);
     return num_written;
 }
