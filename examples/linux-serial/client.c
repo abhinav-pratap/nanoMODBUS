@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
 
     // Set up the serial connection
     serial_conn_t conn;
-    int ret = open_serial_conn(argv[1], 115200, &conn);
+    int ret = open_serial_conn(argv[1], B115200, &conn);
     if (ret != 0) {
         fprintf(stderr, "Error connecting to server\n");
         return 1;

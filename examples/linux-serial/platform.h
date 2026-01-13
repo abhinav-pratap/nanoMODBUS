@@ -12,6 +12,15 @@
 #include <unistd.h>
 
 #include <gpiod.h>
+#include <sys/time.h>
+
+/*
+ * Delay value calculation macros.
+ * c - number of characters
+ * b - bits per character
+ * s - bits per second
+ */
+#define	DV(c, b, s) (c * b * 1000000l / s)
 
 typedef struct {
     int fd;
@@ -21,7 +30,7 @@ typedef struct {
 } serial_conn_t;
 
 int open_serial_conn(const char* portname, int baudrate, serial_conn_t* out_conn) {
-    int fd = open(portname, O_RDWR);
+    int fd = open(portname, O_RDWR | O_NOCTTY | O_SYNC);
     if (fd < 0) {
         printf("error %d opening %s: %s", errno, portname, strerror(errno));
         return -1;
@@ -32,49 +41,49 @@ int open_serial_conn(const char* portname, int baudrate, serial_conn_t* out_conn
     // Create new termios struct, we call it 'tty' for convention
     struct termios tty = out_conn->tty;
 
-    // Read in existing settings, and handle any error
     if (tcgetattr(fd, &tty) != 0) {
-        printf("Error %i from tcgetattr: %s\n", errno, strerror(errno));
-        return 1;
+        printf("Error from tcgetattr: %s\n", strerror(errno));
+        close(fd);
+        return -1;
     }
 
-    tty.c_cflag |= PARENB;            // Set parity bit
-    tty.c_cflag &= ~PARODD;           // Even parity
-    tty.c_cflag &= ~CSTOPB;           // Clear stop field, only one stop bit used in communication (most common)
-    tty.c_cflag &= ~CSIZE;            // Clear all bits that set the data size
-    tty.c_cflag |= CS8;               // 8 bits per byte (most common)
-    tty.c_cflag &= ~CRTSCTS;          // Disable RTS/CTS hardware flow control (most common)
-    tty.c_cflag |= CREAD | CLOCAL;    // Turn on READ & ignore ctrl lines (CLOCAL = 1)
+    // --- Configuration ---
+    
+    // Baud Rate: 115200
+    cfsetospeed(&tty, B115200);
+    cfsetispeed(&tty, B115200);
 
-    tty.c_lflag &= ~ICANON;
-    tty.c_lflag &= ~ECHO;                      // Disable echo
-    tty.c_lflag &= ~ECHOE;                     // Disable erasure
-    tty.c_lflag &= ~ECHONL;                    // Disable new-line echo
-    tty.c_lflag &= ~ISIG;                      // Disable interpretation of INTR, QUIT and SUSP
-    tty.c_iflag &= ~(IXON | IXOFF | IXANY);    // Turn off s/w flow ctrl
-    tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR |
-                     ICRNL);    // Disable any special handling of received bytes
+    // 8 Data bits
+    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
 
-    tty.c_oflag &= ~OPOST;    // Prevent special interpretation of output bytes (e.g. newline chars)
-    tty.c_oflag &= ~ONLCR;    // Prevent conversion of newline to carriage return/line feed
-    // tty.c_oflag &= ~OXTABS; // Prevent conversion of tabs to spaces (NOT PRESENT ON LINUX)
-    // tty.c_oflag &= ~ONOEOT; // Prevent removal of C-d chars (0x004) in output (NOT PRESENT ON LINUX)
+    // Parity: Even
+    tty.c_cflag |= PARENB;  // Enable parity generation on output and checking for input
+    tty.c_cflag &= ~PARODD; // Clear PARODD to make it Even (Setting it would make it Odd)
 
-    tty.c_cc[VTIME] = 10;    // Wait for up to 1s (10 deciseconds), returning as soon as any data is received.
-    tty.c_cc[VMIN] = 0;
+    // 1 Stop bit
+    tty.c_cflag &= ~CSTOPB; // Clear CSTOPB for 1 stop bit (Set it for 2 stop bits)
 
-    // Set in/out baud rate to be 9600
-    cfsetispeed(&tty, baudrate);
-    cfsetospeed(&tty, baudrate);
+    // Hardware flow control: Disable (Common requirement, though not strictly asked)
+    tty.c_cflag &= ~CRTSCTS;
 
-    // Save tty settings, also checking for error
+    // Local flags: Ignore modem controls, enable reading
+    tty.c_cflag |= (CLOCAL | CREAD);
+
+    // Raw mode: Disable canonical mode (line-by-line) and echo
+    tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+    
+    // Output processing: Disable (Raw output)
+    tty.c_oflag &= ~OPOST;
+
+    // Apply settings
     if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-        printf("Error %i from tcsetattr: %s\n", errno, strerror(errno));
-        return 1;
+        printf("Error from tcsetattr: %s\n", strerror(errno));
+        close(fd);
+        return -1;
     }
 
-    const char* chipname = "gpiochip0";
-    unsigned int line_offset = 31;    // Pin 31
+    const char* chipname = "gpiochip1";  // GPIO_AON
+    unsigned int line_offset = 0;    // Pin PAA.00
     struct gpiod_chip* chip;
     struct gpiod_line* line;
     int ret;
@@ -127,6 +136,21 @@ void close_serial_conn(serial_conn_t* conn) {
     gpiod_chip_close(conn->chip);
 }
 
+/*
+ * Delay for USEC microsecs
+ */
+void tty_delay(int usec)
+{
+    struct timeval tv, ttv;
+    long ts;
+    gettimeofday(&tv, NULL);
+    do
+    {
+        (void)gettimeofday(&ttv, NULL);
+        ts = 1000000l * (ttv.tv_sec - tv.tv_sec) + (ttv.tv_usec - tv.tv_usec);
+    } while (ts < usec);
+}
+
 /**
  * nanoMODBUS platform configuration struct.
  * Passed to nmbs_server_create() and nmbs_client_create().
@@ -152,6 +176,16 @@ void close_serial_conn(serial_conn_t* conn) {
  */
 int32_t read_serial(uint8_t* buf, uint16_t count, int32_t byte_timeout_ms, void* arg) {
     serial_conn_t* conn = (serial_conn_t*) arg;
+
+    // Create new termios struct, we call it 'tty' for convention
+    struct termios tty = conn->tty;
+
+    // Read in existing settings, and handle any error
+    if (tcgetattr(conn->fd, &tty) != 0) {
+        printf("Error %i from tcgetattr: %s\n", errno, strerror(errno));
+        return 1;
+    }
+
     if (set_rts_receive(arg) < 0) {
         return -1;
     }
@@ -159,16 +193,23 @@ int32_t read_serial(uint8_t* buf, uint16_t count, int32_t byte_timeout_ms, void*
         // non-blocking read
 
         // update vmin and vtime in termios struct
-        if (conn->tty.c_cc[VMIN] != 0 || conn->tty.c_cc[VTIME] != 0) {
-            conn->tty.c_cc[VMIN] = 0;
-            conn->tty.c_cc[VTIME] = 0;
-            if (tcsetattr(conn->fd, TCSANOW, &conn->tty) != 0) {
+        if (tty.c_cc[VMIN] != 0 || tty.c_cc[VTIME] != 0) {
+            tty.c_cc[VMIN] = 0;
+            tty.c_cc[VTIME] = 0;
+            if (tcsetattr(conn->fd, TCSANOW, &tty) != 0) {
                 printf("Error %i from tcsetattr: %s\n", errno, strerror(errno));
                 return 1;
             }
         }
         ssize_t num_read = read(conn->fd, buf, count);
+        printf("Read %ld bytes\n", num_read);
+        // print the data bytes
+        for (int i = 0; i < num_read; i++) {
+            printf("%02X ", buf[i]);
+        }
+        printf("\n");
         return (int32_t) num_read;
+        return 0;
     }
     else if (byte_timeout_ms > 0) {
         // not supported lmao
@@ -176,15 +217,22 @@ int32_t read_serial(uint8_t* buf, uint16_t count, int32_t byte_timeout_ms, void*
     }
     else {
         // infinite timeout
-        if (conn->tty.c_cc[VMIN] != count || conn->tty.c_cc[VTIME] != 0) {
-            conn->tty.c_cc[VMIN] = count;
-            conn->tty.c_cc[VTIME] = 0;
-            if (tcsetattr(conn->fd, TCSANOW, &conn->tty) != 0) {
+        printf("requesting count=%d bytes with infinite timeout\n", count);
+        if (tty.c_cc[VMIN] != count || tty.c_cc[VTIME] != 0) {
+            tty.c_cc[VMIN] = count;
+            tty.c_cc[VTIME] = 0;
+            if (tcsetattr(conn->fd, TCSANOW, &tty) != 0) {
                 printf("Error %i from tcsetattr: %s\n", errno, strerror(errno));
                 return 1;
             }
         }
         ssize_t num_read = read(conn->fd, buf, count);
+        printf("Read %ld bytes\n", num_read);
+        // print the data bytes
+        for (int i = 0; i < num_read; i++) {
+            printf("%02X ", buf[i]);
+        }
+        printf("\n");
         return (int32_t) num_read;
     }
 }
@@ -196,11 +244,18 @@ int32_t write_serial(const uint8_t* buf, uint16_t count, int32_t byte_timeout_ms
     if (set_rts_transmit(arg) < 0) {
         return -1;
     }
+    
     int32_t num_written = write(conn->fd, buf, count);
-
+    tty_delay(DV((count + 1), 11, 115200)); // wait until all data is transmitted, delay calculation borrowed from mdusd
+    // tcdrain(conn->fd); // waits for wayyyyyy too long after write, ~10 ms for 8 bytes at 115200 baud
+    fprintf(stderr, "Wrote %d bytes\n", num_written);
+    // print the data bytes
+    for (int i = 0; i < num_written; i++) {
+        fprintf(stderr, "%02X ", buf[i]);
+    }
+    fprintf(stderr, "\n");
     if (set_rts_receive(arg) < 0) {
         return -1;
     }
-    fprintf(stderr, "Wrote %d bytes\n", num_written);
     return num_written;
 }
