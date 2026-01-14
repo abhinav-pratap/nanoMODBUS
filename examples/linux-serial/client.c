@@ -45,6 +45,18 @@ int main() {
 
     nmbs_set_destination_rtu_address(&nmbs, 2);    // Set destination modbus rtu address
 
+    uint16_t w_regs[1] = {
+            2307,
+    };
+    err = nmbs_write_multiple_registers(&nmbs, 110, 1, w_regs);
+    if (err != NMBS_ERROR_NONE) {
+        fprintf(stderr, "Error writing register at address 110 - %s\n", nmbs_strerror(err));
+        if (!nmbs_error_is_exception(err))
+            return 1;
+    }
+
+    sleep(1);    // wait a bit for the device to process the command
+
     // Read 1 holding registers from address 110 (CV target)
     uint16_t r_regs[1];
     err = nmbs_read_holding_registers(&nmbs, 110, 1, r_regs);
