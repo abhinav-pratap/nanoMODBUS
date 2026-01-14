@@ -12,15 +12,16 @@
 #include "nanomodbus.h"
 #include "platform.h"
 
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: client port\n");
-        return 1;
-    }
+int main() {
 
     // Set up the serial connection
     serial_conn_t conn;
-    int ret = open_serial_conn(argv[1], B115200, &conn);
+    rts_config_t rts = {
+            .rts_gpiochip = "gpiochip1",    // GPIO_AON
+            .rts_gpio_line_offset = 0,      // PAA.00
+            .rts_active_receive = true,     // active receive (0 on receive)
+    };
+    int ret = open_serial_conn("/dev/ttyTHS1", B115200, &rts, &conn);
     if (ret != 0) {
         fprintf(stderr, "Error connecting to server\n");
         return 1;
