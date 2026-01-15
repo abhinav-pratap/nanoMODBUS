@@ -69,6 +69,19 @@ int main() {
         printf("Register at address 110: %d\n", r_regs[0]);
     }
 
+    sleep(1);    // wait a bit for the device to process the command
+
+    // Read 1 input registers from address 110 (CV target)
+    err = nmbs_read_input_registers(&nmbs, 2, 1, r_regs);
+    if (err != NMBS_ERROR_NONE) {
+        fprintf(stderr, "Error reading 1 input registers at address 2 - %s\n", nmbs_strerror(err));
+        if (!nmbs_error_is_exception(err))
+            return 1;
+    }
+    else {
+        printf("Register at address 2: %d\n", r_regs[0]);
+    }
+
     // Close the serial connection
     close_serial_conn(&conn);
 
